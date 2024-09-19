@@ -17,7 +17,7 @@ setup(
     description='A library for processing and visualizing data',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url='https://github.com/yourusername/my_open_source_library',
+    url='https://github.com/renedoz/flow',
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
