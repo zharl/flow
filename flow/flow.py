@@ -1,7 +1,3 @@
-# This code was written by Marco Renedo prior to joining OnTrade.
-# Original creation date: 2021-06-01
-# This code is being reused with permission from the original author and it is not part of the OnTrade codebase.
-
 import inspect, pydot
 from IPython.display import SVG, display, Markdown, HTML, clear_output
 import os, pandas as pd, matplotlib as mpl, datetime as dt, numpy as np
