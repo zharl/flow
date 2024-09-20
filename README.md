@@ -1,5 +1,5 @@
 # flow
-Flow is a python library that provides an alternative to create classes. 
+Flow is a python library that provides an alternative to creating classes. 
 
 ### Key Features:
 - Define functions and their dependencies.
