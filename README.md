@@ -30,7 +30,9 @@ def multiply(a, b):
 # Create a flow with these functions
 # it creates a dependency graph from the name of the arguments
 f = flow(
-    a=a, b=b
+    name='FirstFlow',
+    doc='It does arithmetic.',
+    a=a, b=b,
     add=add, multiply=multiply
 )
 
