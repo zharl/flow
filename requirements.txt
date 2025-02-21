@@ -5,3 +5,4 @@ ipywidgets
 autopep8
 pydot
 IPython
+typing_extensions
