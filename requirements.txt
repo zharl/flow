@@ -7,3 +7,4 @@ pydot
 IPython
 typing_extensions
 graphviz
+markdown

@@ -19,7 +19,7 @@ def a() -> Annotated[int, "Constant value for a"]:
     """Returns a constant integer."""
     return 2
 
-def b() -> int:
+def b() -> Annotated[int, "Constant value for b"]:
     """Returns another constant integer."""
     return 3
 
