@@ -5,7 +5,9 @@ import ipywidgets as widgets
 import copy
 import autopep8, re, inspect
 import pickle
+import markdown
 from typing import get_origin, get_args
+
 
 # Conditional import for Annotated to support Python 3.6+
 try:
@@ -66,13 +68,22 @@ def get_return_info(func):
     if origin is Annotated:
         args = get_args(annot)
         if len(args) >= 2:
-            return args[0], args[1]  # type, description
+            return_type, description = args[0], args[1]
         elif len(args) == 1:
-            return args[0], ""  # type only
+            return_type, description = args[0], ""
         else:
-            return None, ""  # invalid Annotated
+            return None, ""
     else:
-        return annot, ""  # plain type, no description
+        return_type, description = annot, ""
+    
+    # Convert return_type to a readable string
+    if hasattr(return_type, '__name__'):
+        type_str = return_type.__name__  # e.g., 'int', 'str'
+    elif isinstance(return_type, type):
+        type_str = return_type.__name__
+    else:
+        type_str = str(return_type)  # Fallback for complex types
+    return type_str, description
 
 class flow:
     def __init__(self, *args, **kwargs):
@@ -147,30 +158,40 @@ class flow:
                 self._fixed.remove(i)
 
     def __repr__(self):
-        classDoc = self._doc()
+        classDoc = self._doc()  # Get the class documentation
+        # Collect function descriptions
+        descriptions = []
+        for func_name in self._order:
+            _, description = get_return_info(self._functions[func_name])
+            if description:
+                descriptions.append(f"**{func_name}**: {description}")
+        # Build extended documentation
+        if descriptions:
+            extended_doc = classDoc + " " + "; ".join(descriptions) + ";"
+        else:
+            extended_doc = classDoc
+        # Convert to Markdown HTML
+        md_html = markdown.markdown(extended_doc)
+        
+        # Create the graph
         G = pydot.Dot(rankdir='LR', pad='.05', nodesep='.03', outputorder='edgesfirst',
-                      tooltip=classDoc, bgcolor="transparent", ranksep='.2', mincross='2.0',
-                      splines='spline')
+                    tooltip=classDoc, bgcolor="transparent", ranksep='.2', mincross='2.0',
+                    splines='spline')
+        
+        # Build the graph nodes
         for a in reversed(self._order):
-            # Extract return type and description from type hints
-            return_type, description = get_return_info(self._functions[a])
-            type_str = str(return_type) if return_type is not None else ""
-            
-            # Build node label: name, return type, value
+            return_type_str, description = get_return_info(self._functions[a])
             label = '<FONT face="verdana" POINT-SIZE="9" COLOR="BLUE">' + a.replace('_', ' ') + '</FONT>'
-            if type_str:
-                label += '<BR></BR><FONT POINT-SIZE="6" COLOR="RED">' + type_str + '</FONT>'
+            if return_type_str:
+                label += '<BR></BR><FONT POINT-SIZE="6" COLOR="RED">' + return_type_str + '</FONT>'
             if a in self._values:
                 label += '<BR></BR><FONT POINT-SIZE="6">' + val(self._values[a]) + '</FONT>'
-            
-            # Build node tooltip: description, docstring, source code
             tooltip = ""
-            if description:
-                tooltip += "Description: " + description + "\n"
-            if self._functions[a].__doc__:
-                tooltip += "Docstring:\n" + self._functions[a].__doc__ + "\n"
-            tooltip += "Source:\n" + inspect.getsource(self._functions[a])
-            
+            # if description:
+            #     tooltip += "Description: " + description + "\n"
+            # if self._functions[a].__doc__:
+            #     tooltip += "Docstring:\n" + self._functions[a].__doc__ + "\n"
+            tooltip += inspect.getsource(self._functions[a])
             nodeA = pydot.Node(
                 a, fillcolor='#EEEEEE' if a not in self._fixed else '#FFDDDD',
                 color='#000000' if a not in self._defined else '#00AA00', penwidth='1', label='<' + label + '>',
@@ -179,16 +200,23 @@ class flow:
                 tooltip=tooltip
             )
             G.add_node(nodeA)
+        
+        # Add edges
         for b in self._order:
             for a in self._parents[b]:
                 G.add_edge(pydot.Edge(a, b, tailport='e', color='#feb20930',
-                                      penwidth=5, style='line', arrowhead='none'))
+                                    penwidth=5, style='line', arrowhead='none'))
+        
+        # Generate SVG
+        svg = G.create_svg().decode()
+        # Combine into a single HTML string
+        html = f"<div>{md_html}</div><div>{svg}</div>"
         try:
-            display(Markdown(classDoc), HTML(G.create_svg().decode()))
+            display(HTML(html))
         except:
             print(G.to_string())
-        return self._name()
-
+        return self._name()        
+        
     def __call__(self, **kwargs):
         for k in kwargs:
             if k not in self._parents:
@@ -208,7 +236,7 @@ class flow:
         for i in kwargs:
             self._fixed.add(i)
         return self
-    
+
 def show_flows(d):
     for k,v in d.items():
         display(HTML(f'<FONT face="verdana" POINT-SIZE="14" COLOR="BLUE">{k}</FONT'))
@@ -227,6 +255,7 @@ def gui(u,k0=''):
     if hasattr(u,'_parents'): display(gui_flow(u,k0))
     elif type(u) == dict: display(gui_dict(u,k0))
     else: display(widgets.Label(k0+' : '+str(type(u))),u)
+
 def gui_flow(a,k0=''):
     button_dict = {}
     output = widgets.Output()
@@ -255,6 +284,124 @@ def gui_flow(a,k0=''):
     for k in button_dict:
             button_dict[k].style.button_color='orange' if k in a._fixed else 'lightgreen' if k in a._values else None
     return widgets.VBox([widgets.Label(k0+' : '+a._name()),widgets.HBox(l),output])
+
+def gui_flow_interactive(a, k0=''):
+    """
+    Enhanced GUI for flow visualization and interaction, allowing editing of leaf node values.
+
+    Parameters:
+    - a: The flow object.
+    - k0: Optional prefix for labeling (default '').
+    """
+    button_dict = {}
+    widget_dict = {}  # Dictionary to hold widgets for leaf nodes
+    output = widgets.Output()
+    
+    def on_button_clicked(x):
+        """Callback for button clicks to display node values or source code."""
+        with output:
+            clear_output()
+            u = getattr(a, x.description)
+            # Assuming 'gui' is a function that displays the node's value or source
+            gui(u, x.description)
+        # Update button colors to indicate fixed or computed values
+        for k in button_dict:
+            button_dict[k].style.button_color = (
+                'orange' if k in a._fixed else
+                'lightgreen' if k in a._values else
+                None
+            )
+    
+    # Layout for buttons and widgets
+    blayout = widgets.Layout(
+        display='flex',
+        justify_content='flex-start',
+        align_items='center',
+        width='auto',
+        height='20px',
+        padding='7px',
+        margin='2px'
+    )
+    
+    # Iterate over all nodes in the flow
+    for k in a._parents:
+        # Create a button for each node
+        button_dict[k] = widgets.Button(
+            description=k,
+            layout=blayout,
+            tooltip=inspect.getsource(a._functions[k])
+        )
+        button_dict[k].on_click(on_button_clicked)
+        
+        # Check if the node is a leaf node
+        if len(a._parents[k]) == 0:
+            # Get the current value of the leaf node, if computed
+            current_value = str(getattr(a, k)) if k in a._values else ''
+            # Create a text widget for editing the leaf node's value
+            widget_dict[k] = widgets.Text(
+                value=current_value,
+                description=k,
+                layout=blayout
+            )
+            
+            def on_value_change(change, node=k):
+                """
+                Callback for when the text widget's value changes.
+                Updates the node's value and recomputes dependent nodes.
+                """
+                new_value = change['new']
+                try:
+                    # Attempt to evaluate the input as a Python expression
+                    evaluated_value = eval(new_value)
+                    # Update the node's value in the flow
+                    a.__call__(**{node: evaluated_value})
+                except Exception as e:
+                    print(f"Error setting {node}: {e}")
+            
+            # Attach the callback to the text widget
+            widget_dict[k].observe(on_value_change, names='value')
+    
+    # Organize nodes by generation for layout (assuming get_gen is defined)
+    gen = get_gen(a._parents)
+    l = []
+    i = 0
+    layout = widgets.Layout(
+        display='flex',
+        justify_content='flex-start',
+        align_content='flex-start'
+    )
+    
+    # Build the layout
+    while i in gen:
+        node_group = sorted(gen[i])
+        group_widgets = []
+        for k in node_group:
+            # For leaf nodes, include both the button and the text widget
+            if k in widget_dict:
+                group_widgets.append(
+                    widgets.VBox([button_dict[k], widget_dict[k]])
+                )
+            else:
+                # For non-leaf nodes, include only the button
+                group_widgets.append(button_dict[k])
+        l.append(widgets.VBox(group_widgets, layout=layout))
+        i += 1
+    
+    # Set initial button colors
+    for k in button_dict:
+        button_dict[k].style.button_color = (
+            'orange' if k in a._fixed else
+            'lightgreen' if k in a._values else
+            None
+        )
+    
+    # Return the complete GUI layout
+    return widgets.VBox([
+        widgets.Label(k0 + ' : ' + a._name()),
+        widgets.HBox(l),
+        output
+    ])
+
 def gui_dict(a,k0):
     button_dict = {}
     output = widgets.Output()
