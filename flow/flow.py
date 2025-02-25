@@ -402,7 +402,7 @@ def gui_flow_interactive(a, k0=''):
         output
     ])
 
-def gui_dict(a,k0):
+def gui_dict_old(a,k0):
     button_dict = {}
     output = widgets.Output()
     def f(x):
@@ -418,6 +418,33 @@ def gui_dict(a,k0):
     l = widgets.VBox([button_dict[k] for k in button_dict],layout=layout)
     return widgets.VBox([widgets.Label(k0+' : dict'),l,output])
 
+def gui_dict(a, k0):
+    button_dict = {}
+    output = widgets.Output()
+    
+    def f(x):
+        with output:
+            clear_output()
+            u = a[x.description]
+            gui(u, x.description)
+    
+    for k in a.keys():
+        # Convert the key to a string for the button description
+        description = str(k)
+        button_dict[k] = widgets.Button(
+            description=description, 
+            layout=widgets.Layout(width='auto')
+        )
+        button_dict[k].on_click(f)
+    
+    layout = widgets.Layout(
+        display='flex',
+        justify_content='flex-start',
+        align_content='flex-start',
+        flex_flow='row wrap'
+    )
+    l = widgets.VBox([button_dict[k] for k in button_dict], layout=layout)
+    return widgets.VBox([widgets.Label(k0 + ' : dict'), l, output])
 
 def save_flow(f,inputs, outputs):
     inputs = {k:getattr(f,k) for k in inputs}
